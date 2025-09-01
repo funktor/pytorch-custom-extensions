@@ -13,7 +13,7 @@ from torch.utils.cpp_extension import (
 
 setup(
     name="extension_cpp",
-    version="0.1.2",
+    version="0.2.0",
     packages=find_packages(),
     ext_modules=[
         CppExtension(

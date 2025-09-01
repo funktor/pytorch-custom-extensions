@@ -4,35 +4,6 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <iostream>
-#include <vector>
-#include <algorithm>
-#include <array>
-#include <map>
-#include <set>
-#include <unordered_map>
-#include <unordered_set>
-#include <deque>
-#include <tuple>
-#include <map>
-#include <fcntl.h>
-#include <functional>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <cstring>
-#include <string>
-#include <random>
-#include <algorithm>
-#include <chrono>
-#include <mutex>
-#include <thread>
-#include <ctime> 
-#include <stdbool.h>    // bool type
-#include <fstream>
-#include <cmath>
-#include <variant>
-#include <assert.h>
-#include <initializer_list>
 
 void softmax_cuda_launcher(const float *inp, float *out, const unsigned long n, const unsigned long m);
 void softmax_cuda_grad_launcher(const float *grad, const float *fwd, float *out, const unsigned long n, const unsigned long m);

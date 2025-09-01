@@ -3,36 +3,6 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <iostream>
-#include <vector>
-#include <algorithm>
-#include <array>
-#include <map>
-#include <set>
-#include <unordered_map>
-#include <unordered_set>
-#include <deque>
-#include <tuple>
-#include <map>
-#include <fcntl.h>
-#include <functional>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <cstring>
-#include <string>
-#include <random>
-#include <algorithm>
-#include <chrono>
-#include <mutex>
-#include <thread>
-#include <ctime> 
-#include <stdbool.h>    // bool type
-#include <fstream>
-#include <cmath>
-#include <variant>
-#include <omp.h>
-#include <math.h>
-#include <assert.h>
 
 #define BLOCK_WIDTH_PER_DIM 32
 
