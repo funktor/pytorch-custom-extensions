@@ -51,6 +51,9 @@ namespace extension_cpp {
                 }
             }
         });
+
+        delete[] max_per_row;
+        delete[] sum_per_row;
     }
 
     void softmax_grad(const float *grad, const float *fwd, float *out, const unsigned long n, const unsigned long m) {
