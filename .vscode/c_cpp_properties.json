@@ -8,10 +8,11 @@
                 "/Users/amondal/recsys/.venv/lib/python3.13/site-packages/torch/include/torch/csrc/api/include",
                 "/Users/amondal/recsys/.venv/lib/python3.13/site-packages/torch/include",
                 "/opt/homebrew/opt/tbb/include",
-                "/opt/homebrew/opt/libomp/include"
+                "/opt/homebrew/opt/libomp/include",
+                "/opt/homebrew/opt/openblas/include"
             ],
             "defines": [],
-            "compilerPath": "/usr/bin/clang",
+            "compilerPath": "/opt/homebrew/opt/llvm/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",
             "intelliSenseMode": "macos-clang-arm64"

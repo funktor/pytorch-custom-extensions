@@ -13,24 +13,29 @@ from torch.utils.cpp_extension import (
 
 setup(
     name="extension_cpp",
-    version="0.0.37",
+    version="0.1.2",
     packages=find_packages(),
     ext_modules=[
         CppExtension(
             "extension_cpp",
             ["extension.cpp"],
             extra_compile_args={
-                "cxx": ["-O3", "-ltbb", "-Wall", "-fopenmp"]
+                "cxx": ["-O3", "-ltbb", "-Wall", "-fopenmp", "-lcblas", "-lblas"]
             },
-            extra_link_args=["-ltbb"],
+            extra_link_args=["-ltbb", "-lcblas", "-lblas"],
             include_dirs=[
                 "/opt/homebrew/opt/python@3.13/Frameworks/Python.framework/Versions/3.13/include/python3.13", 
                 "/Users/amondal/recsys/.venv/lib/python3.13/site-packages/torch/include/torch/csrc/api/include",
                 "/Users/amondal/recsys/.venv/lib/python3.13/site-packages/torch/include",
                 "/opt/homebrew/opt/tbb/include",
-                "/opt/homebrew/opt/libomp/include"
+                "/opt/homebrew/opt/libomp/include",
+                "/opt/homebrew/opt/openblas/include"
             ],
-            library_dirs=["/opt/homebrew/opt/tbb/lib"]
+            library_dirs=[
+                "/opt/homebrew/opt/tbb/lib", 
+                "/opt/homebrew/opt/openblas/lib", 
+                "/opt/homebrew/opt/libomp/lib"
+            ]
         )
     ],
     install_requires=["torch"],

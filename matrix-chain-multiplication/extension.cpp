@@ -8,6 +8,7 @@
 #include <vector>
 #include <random>
 #include <omp.h>
+#include <cblas.h>
 
 namespace extension_cpp {
     struct MatrixCost {
@@ -24,16 +25,7 @@ namespace extension_cpp {
             }
         }
 
-        omp_set_num_threads(16);
-        #pragma omp parallel for shared(c)
-        for (long long i = 0; i < n; i++) {
-            for (long long j = 0; j < m; j++) {
-                for (long long k = 0; k < p; k++) {
-                    c[i*p + k] += a[i*m + j]*b[j*p + k];
-                }
-            }
-        }
-
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, n, p, m, 1.0f, a, m, b, p, 0.0f, c, p);
         return c;
     }
 
@@ -64,6 +56,8 @@ namespace extension_cpp {
         MatrixCost *dp = new MatrixCost[num_matrices*num_matrices];
 
         for (unsigned int length = 1; length <= num_matrices; length++) {
+            omp_set_num_threads(8);
+            #pragma omp parallel for shared(dp)
             for (unsigned int i = 0; i < num_matrices-length+1; i++) {
                 unsigned int j = i+length-1;
 
@@ -89,9 +83,11 @@ namespace extension_cpp {
             }
         }
 
+        std::cout << "Optimal Cost = " << dp[num_matrices-1].cost << std::endl;
+
         float *d = mydot(a, dp, 0, num_matrices-1, num_matrices);
         for (long long k = 0; k < a[0].size(0)*a[num_matrices-1].size(1); k++) out[k] = d[k];
-        
+
         delete[] dp;
         delete[] d;
     }
