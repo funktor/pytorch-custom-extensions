@@ -16,7 +16,7 @@ def get_standard_cost(tensors):
     return c
 
 
-n = 30
+n = 40
 matrices = []
 for i in range(n):
     if i == 0:
@@ -51,8 +51,23 @@ print("Custom CPU Forward Pass Output\n", d2)
 print()
 
 d1 = d1/d1.max()
-d2 = d2/d2.max()
+d2 = d2/d1.max()
 
 print(torch.abs(d1-d2).max())
 
-assert torch.allclose(d1, d2, atol=1e-5), "Error in custom matrix impl"
+assert torch.allclose(d1, d2, atol=1e-5), "Error in custom matrix impl CPU"
+
+matrices_gpu = [x.to(device='cuda:0') for x in matrices]
+
+start = time.time()*1000
+d3 = extension_cpp.dot_chain_gpu(matrices_gpu)
+end = time.time()*1000
+print("Custom GPU Forward Pass Duration = ", end-start)
+print("Custom GPU Forward Pass Output\n", d3)
+print()
+
+d3 = d3/d1.max()
+
+print(torch.abs(d1-d3).max())
+
+assert torch.allclose(d1, d3, atol=1e-5), "Error in custom matrix impl GPU"

@@ -10,13 +10,15 @@
 #include <omp.h>
 #include <cblas.h>
 
+void cuda_mul_launcher(const float *a, const float *b, float *c, const long long n, const long long m, const long long p);
+
 namespace extension_cpp {
     struct MatrixCost {
         long long cost;
         unsigned int break_pt;
     };
 
-    float* get_dot(const float *a, const float *b, const long long n, const long long m, const long long p) {
+    float* get_dot_cpu(const float *a, const float *b, const long long n, const long long m, const long long p) {
         float *c = new float[n*p];
 
         for (long long i = 0; i < n; i++) {
@@ -29,7 +31,13 @@ namespace extension_cpp {
         return c;
     }
 
-    float *mydot(
+    float* get_dot_gpu(const float *a, const float *b, const long long n, const long long m, const long long p) {
+        float *c = new float[n*p];
+        cuda_mul_launcher(a, b, c, n, m, p);
+        return c;
+    }
+
+    float *mydot_cpu(
         const std::vector<torch::Tensor> &a, 
         const MatrixCost *dp, 
         const unsigned int i, 
@@ -38,23 +46,40 @@ namespace extension_cpp {
 
         if (i == j) return a[i].data_ptr<float>();
         else if (i == j-1) {
-            return get_dot(a[i].data_ptr<float>(), a[j].data_ptr<float>(), a[i].size(0), a[i].size(1), a[j].size(1));
+            return get_dot_cpu(a[i].data_ptr<float>(), a[j].data_ptr<float>(), a[i].size(0), a[i].size(1), a[j].size(1));
         }
         else {
             unsigned int k = dp[i*num_matrices + j].break_pt;
-            float *x = mydot(a, dp, i, k, num_matrices);
-            float *y = mydot(a, dp, k+1, j, num_matrices);
-            return get_dot(x, y, a[i].size(0), a[k].size(1), a[j].size(1));
+            float *x = mydot_cpu(a, dp, i, k, num_matrices);
+            float *y = mydot_cpu(a, dp, k+1, j, num_matrices);
+            return get_dot_cpu(x, y, a[i].size(0), a[k].size(1), a[j].size(1));
         }
     }
 
-    void get_dot_sequence(
+    float *mydot_gpu(
         const std::vector<torch::Tensor> &a, 
-        float *out, 
+        const MatrixCost *dp, 
+        const unsigned int i, 
+        const unsigned int j, 
+        const unsigned int num_matrices) {
+
+        if (i == j) return a[i].data_ptr<float>();
+        else if (i == j-1) {
+            return get_dot_gpu(a[i].data_ptr<float>(), a[j].data_ptr<float>(), a[i].size(0), a[i].size(1), a[j].size(1));
+        }
+        else {
+            unsigned int k = dp[i*num_matrices + j].break_pt;
+            float *x = mydot_gpu(a, dp, i, k, num_matrices);
+            float *y = mydot_gpu(a, dp, k+1, j, num_matrices);
+            return get_dot_gpu(x, y, a[i].size(0), a[k].size(1), a[j].size(1));
+        }
+    }
+
+    void get_optimal_order(
+        const std::vector<torch::Tensor> &a, 
+        MatrixCost *dp,
         const unsigned int num_matrices
     ) {
-        MatrixCost *dp = new MatrixCost[num_matrices*num_matrices];
-
         for (unsigned int length = 1; length <= num_matrices; length++) {
             omp_set_num_threads(8);
             #pragma omp parallel for shared(dp)
@@ -82,10 +107,36 @@ namespace extension_cpp {
                 }
             }
         }
+    }
+
+    void optimal_dot_chain_cpu(
+        const std::vector<torch::Tensor> &a, 
+        float *out, 
+        const unsigned int num_matrices
+    ) {
+        MatrixCost *dp = new MatrixCost[num_matrices*num_matrices];
+        get_optimal_order(a, dp, num_matrices);
 
         std::cout << "Optimal Cost = " << dp[num_matrices-1].cost << std::endl;
 
-        float *d = mydot(a, dp, 0, num_matrices-1, num_matrices);
+        float *d = mydot_cpu(a, dp, 0, num_matrices-1, num_matrices);
+        for (long long k = 0; k < a[0].size(0)*a[num_matrices-1].size(1); k++) out[k] = d[k];
+
+        delete[] dp;
+        delete[] d;
+    }
+
+    void optimal_dot_chain_gpu(
+        const std::vector<torch::Tensor> &a, 
+        float *out, 
+        const unsigned int num_matrices
+    ) {
+        MatrixCost *dp = new MatrixCost[num_matrices*num_matrices];
+        get_optimal_order(a, dp, num_matrices);
+
+        std::cout << "Optimal Cost = " << dp[num_matrices-1].cost << std::endl;
+
+        float *d = mydot_gpu(a, dp, 0, num_matrices-1, num_matrices);
         for (long long k = 0; k < a[0].size(0)*a[num_matrices-1].size(1); k++) out[k] = d[k];
 
         delete[] dp;
@@ -95,11 +146,19 @@ namespace extension_cpp {
     torch::Tensor dot_chain_cpu(const std::vector<torch::Tensor> &a) {
         unsigned int num_matrices = a.size();
         torch::Tensor h = torch::empty({a[0].size(0), a[num_matrices-1].size(1)});
-        get_dot_sequence(a, h.data_ptr<float>(), num_matrices);
+        optimal_dot_chain_cpu(a, h.data_ptr<float>(), num_matrices);
+        return h;
+    }
+
+    torch::Tensor dot_chain_gpu(const std::vector<torch::Tensor> &a) {
+        unsigned int num_matrices = a.size();
+        torch::Tensor h = torch::empty({a[0].size(0), a[num_matrices-1].size(1)});
+        optimal_dot_chain_gpu(a, h.data_ptr<float>(), num_matrices);
         return h;
     }
 
     PYBIND11_MODULE(extension_cpp, m) {
         m.def("dot_chain_cpu", &dot_chain_cpu, "Matrix Chain Multiplication CPU");
+        m.def("dot_chain_gpu", &dot_chain_gpu, "Matrix Chain Multiplication GPU");
     }
 }
