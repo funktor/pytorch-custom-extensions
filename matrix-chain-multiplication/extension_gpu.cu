@@ -1,4 +1,5 @@
 #include <cuda.h>
+#include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <Python.h>
 #include <torch/extension.h>
@@ -44,6 +45,32 @@ void cuda_mul(const float *a, const float *b, float *c, const long long n, const
     }
 
     if (row < n && col < p) c[row*p+col] = res;
+}
+
+void cuda_free(float *d) {
+    cudaFree(d);
+}
+
+float* cublas_mul(const float *a, const float *b, const long long n, const long long m, const long long p) {
+    cublasHandle_t handle;
+    cublasCreate(&handle);
+
+    float *c = new float[n*p];
+    cudaMallocManaged(&c, n*p*sizeof(float));
+
+    float alpha = 1.0f;
+    float beta = 0.0f;
+    cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, p, n, m, &alpha, b, p, a, m, &beta, c, p);
+
+    cudaDeviceSynchronize();
+    cublasDestroy(handle);
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA error: %s\n", cudaGetErrorString(err));
+    }
+
+    return c;
 }
 
 float* get_dot_gpu(const float *a, const float *b, const long long n, const long long m, const long long p) {

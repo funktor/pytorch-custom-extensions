@@ -10,6 +10,7 @@
 #include <omp.h>
 #include <cblas.h>
 
+void cuda_free(float *d);
 float* get_dot_gpu(const float *a, const float *b, const long long n, const long long m, const long long p);
 
 float* get_dot_cpu(const float *a, const float *b, const long long n, const long long m, const long long p) {
@@ -135,7 +136,7 @@ void optimal_dot_chain_gpu(const std::vector<torch::Tensor> &a, float *out, cons
     for (long long k = 0; k < a[0].size(0)*a[num_matrices-1].size(1); k++) out[k] = d[k];
 
     delete[] dp_part;
-    delete[] d;
+    cuda_free(d);
 }
 
 namespace extension_cpp {
@@ -170,9 +171,9 @@ namespace extension_cpp {
             if (i < num_matrices-1) TORCH_CHECK(a[i].size(1) == a[i+1].size(0), "Tensors must be compatible for multiplication")
         }
 
-        torch::Device device(torch::kCUDA);
-        torch::Tensor h = torch::empty({a[0].size(0), a[num_matrices-1].size(1)}, device);
+        torch::Tensor h = torch::empty({a[0].size(0), a[num_matrices-1].size(1)});
         optimal_dot_chain_gpu(a, h.data_ptr<float>(), num_matrices);
+        
         return h;
     }
 
