@@ -14,7 +14,7 @@ from torch.utils.cpp_extension import (
 
 setup(
     name="extension_cpp",
-    version="0.0.1",
+    version="0.0.19",
     packages=find_packages(),
     ext_modules=[
         CUDAExtension(
@@ -22,11 +22,11 @@ setup(
             ["extension.cpp", "extension_gpu.cu"],
             extra_compile_args={
                 "nvcc": ["-arch=sm_89", "-Xcompiler=-O3"],
-                "cxx": ["-O3", "-ltbb", "-Wall", "-fopenmp", "-lcblas", "-lblas"]
+                "cxx": ["-O3", "-ltbb", "-Wall", "-fopenmp", "-lopenblas"]
             },
-            extra_link_args=["-ltbb", "-lcblas", "-lblas"],
+            extra_link_args=["-ltbb", "-lopenblas"],
             include_dirs=[
-                "/opt/python/3.10/include/python3.10", 
+                "/opt/python/3.10/include/python3.10",
                 "/opt/python/3.10/lib/python3.10/site-packages/torch/include/torch/csrc/api/include",
                 "/opt/python/3.10/lib/python3.10/site-packages/torch/include",
                 "/usr/include"
