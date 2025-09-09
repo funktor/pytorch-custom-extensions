@@ -47,7 +47,49 @@ float* get_dot_cpu(
     return c;
 }
 
-float *mydot_cpu(
+void mydot_cpu_w_cache(
+    const std::vector<torch::Tensor> &a, 
+    const unsigned int *dp_part, 
+    const unsigned int i, 
+    const unsigned int j, 
+    const unsigned int num_matrices,
+    float **cache) {
+
+    if (cache[i*num_matrices + j] == nullptr) {
+        if (i == j) cache[i*num_matrices + j] = a[i].data_ptr<float>();
+        else if (i == j-1) {
+            cache[i*num_matrices + j] = 
+                get_dot_cpu(
+                    a[i].data_ptr<float>(), 
+                    a[j].data_ptr<float>(), 
+                    false, 
+                    false, 
+                    a[i].size(0), 
+                    a[i].size(1), 
+                    a[j].size(0), 
+                    a[j].size(1)
+                );
+        }
+        else {
+            unsigned int k = dp_part[i*num_matrices + j];
+            mydot_cpu_w_cache(a, dp_part, i, k, num_matrices, cache);
+            mydot_cpu_w_cache(a, dp_part, k+1, j, num_matrices, cache);
+            cache[i*num_matrices + j] = 
+                get_dot_cpu(
+                    cache[i*num_matrices + k], 
+                    cache[(k+1)*num_matrices + j], 
+                    false, 
+                    false, 
+                    a[i].size(0), 
+                    a[k].size(1), 
+                    a[k+1].size(0), 
+                    a[j].size(1)
+                );
+        }
+    }
+}
+
+float* mydot_cpu(
     const std::vector<torch::Tensor> &a, 
     const unsigned int *dp_part, 
     const unsigned int i, 
@@ -56,13 +98,33 @@ float *mydot_cpu(
 
     if (i == j) return a[i].data_ptr<float>();
     else if (i == j-1) {
-        return get_dot_cpu(a[i].data_ptr<float>(), a[j].data_ptr<float>(), false, false, a[i].size(0), a[i].size(1), a[j].size(0), a[j].size(1));
+        return 
+            get_dot_cpu(
+                a[i].data_ptr<float>(), 
+                a[j].data_ptr<float>(), 
+                false, 
+                false, 
+                a[i].size(0), 
+                a[i].size(1), 
+                a[j].size(0), 
+                a[j].size(1)
+            );
     }
     else {
         unsigned int k = dp_part[i*num_matrices + j];
         float *x = mydot_cpu(a, dp_part, i, k, num_matrices);
         float *y = mydot_cpu(a, dp_part, k+1, j, num_matrices);
-        return get_dot_cpu(x, y, false, false, a[i].size(0), a[k].size(1), a[j].size(0), a[j].size(1));
+        return 
+            get_dot_cpu(
+                x, 
+                y, 
+                false, 
+                false, 
+                a[i].size(0), 
+                a[k].size(1), 
+                a[k+1].size(0), 
+                a[j].size(1)
+            );
     }
 }
 
@@ -114,7 +176,9 @@ void optimal_dot_chain_common(
                     long long x = dp_cost[i*num_matrices + k];
                     long long y = dp_cost[(k+1)*num_matrices + j];
 
-                    long long new_cost = x + y + a[i].size(0)*a[k].size(1)*a[j].size(1);
+                    long long c = a[i].size(0)*a[k].size(1)*a[j].size(1);
+                    long long new_cost = x + y + c;
+
                     if (new_cost < min_cost) {
                         min_cost = new_cost;
                         min_break_pt = k;
@@ -130,7 +194,7 @@ void optimal_dot_chain_common(
 
 void optimal_dot_chain_cpu(
     const std::vector<torch::Tensor> &a, 
-    float *out, 
+    float *out,
     const unsigned int num_matrices) {
 
     long long *dp_cost = new long long[num_matrices*num_matrices];
@@ -143,7 +207,7 @@ void optimal_dot_chain_cpu(
 
     float *d = mydot_cpu(a, dp_part, 0, num_matrices-1, num_matrices);
     for (long long k = 0; k < a[0].size(0)*a[num_matrices-1].size(1); k++) out[k] = d[k];
-
+    
     delete[] dp_part;
     delete[] d;
 }
@@ -176,13 +240,16 @@ void compute_backward_pass_cpu(
     optimal_dot_chain_common(ainp, dp_cost, dp_part, num_matrices);
     delete[] dp_cost;
 
+    float **cache = new float*[num_matrices*num_matrices];
+    for (unsigned int i = 0; i < num_matrices*num_matrices; i++) cache[i] = nullptr;
+
     omp_set_num_threads(8);
-    #pragma omp parallel for shared(aout)
+    #pragma omp parallel for shared(aout, cache)
     for (unsigned int i = 0; i < num_matrices; i++) {
         float *out = aout[i].data_ptr<float>();
 
         if (i == 0) {
-            float *out_e = mydot_cpu(ainp, dp_part, i+1, num_matrices-1, num_matrices);
+            mydot_cpu_w_cache(ainp, dp_part, i+1, num_matrices-1, num_matrices, cache);
 
             long long n_e = ainp[1].size(0);
             long long m_e = ainp[num_matrices-1].size(1);
@@ -190,15 +257,14 @@ void compute_backward_pass_cpu(
             long long n_grad = ainp[0].size(0);
             long long m_grad = ainp[num_matrices-1].size(1);
 
-            float *d = get_dot_cpu(grad, out_e, false, true, n_grad, m_grad, n_e, m_e);
+            float *d = get_dot_cpu(grad, cache[(i+1)*num_matrices + num_matrices-1], false, true, n_grad, m_grad, n_e, m_e);
             for (long long k = 0; k < n_grad*n_e; k++) out[k] = d[k];
 
-            delete[] out_e;
             delete[] d;
         }
 
         else if (i == num_matrices-1) {
-            float *out_s = mydot_cpu(ainp, dp_part, 0, i-1, num_matrices);
+            mydot_cpu_w_cache(ainp, dp_part, 0, i-1, num_matrices, cache);
 
             long long n_s = ainp[0].size(0);
             long long m_s = ainp[i-1].size(1);
@@ -206,16 +272,15 @@ void compute_backward_pass_cpu(
             long long n_grad = ainp[0].size(0);
             long long m_grad = ainp[num_matrices-1].size(1);
 
-            float *d = get_dot_cpu(out_s, grad, true, false, n_s, m_s, n_grad, m_grad);
+            float *d = get_dot_cpu(cache[i-1], grad, true, false, n_s, m_s, n_grad, m_grad);
             for (long long k = 0; k < m_s*m_grad; k++) out[k] = d[k];
 
-            delete[] out_s;
             delete[] d;
         }
 
         else {
-            float *out_s = mydot_cpu(ainp, dp_part, 0, i-1, num_matrices);
-            float *out_e = mydot_cpu(ainp, dp_part, i+1, num_matrices-1, num_matrices);
+            mydot_cpu_w_cache(ainp, dp_part, 0, i-1, num_matrices, cache);
+            mydot_cpu_w_cache(ainp, dp_part, i+1, num_matrices-1, num_matrices, cache);
 
             long long n_s = ainp[0].size(0);
             long long m_s = ainp[i-1].size(1);
@@ -230,28 +295,26 @@ void compute_backward_pass_cpu(
             long long cost_b =  n_grad*m_grad*n_e + m_s*n_grad*n_e;
 
             if (cost_a < cost_b) {
-                float *out1 = get_dot_cpu(out_s, grad, true, false, n_s, m_s, n_grad, m_grad);
-                float *out2 = get_dot_cpu(out1, out_e, false, true, m_s, m_grad, n_e, m_e);
+                float *out1 = get_dot_cpu(cache[i-1], grad, true, false, n_s, m_s, n_grad, m_grad);
+                float *out2 = get_dot_cpu(out1, cache[(i+1)*num_matrices + num_matrices-1], false, true, m_s, m_grad, n_e, m_e);
                 for (long long k = 0; k < m_s*n_e; k++) out[k] = out2[k];
 
-                delete[] out_s;
-                delete[] out_e;
                 delete[] out1;
                 delete[] out2;
             }
 
             else {
-                float *out1 = get_dot_cpu(grad, out_e, false, true, n_grad, m_grad, n_e, m_e);
-                float *out2 = get_dot_cpu(out_s, out1, true, false, n_s, m_s, n_grad, n_e);
+                float *out1 = get_dot_cpu(grad, cache[(i+1)*num_matrices + num_matrices-1], false, true, n_grad, m_grad, n_e, m_e);
+                float *out2 = get_dot_cpu(cache[i-1], out1, true, false, n_s, m_s, n_grad, n_e);
                 for (long long k = 0; k < m_s*n_e; k++) out[k] = out2[k];
 
-                delete[] out_s;
-                delete[] out_e;
                 delete[] out1;
                 delete[] out2;
             }
         }
     }
+
+    delete[] dp_part;
 }
 
 namespace extension_cpp {
@@ -326,4 +389,3 @@ namespace extension_cpp {
         m.def("dot_chain_gpu", &dot_chain_gpu, "Matrix Chain Multiplication GPU");
     }
 }
-
