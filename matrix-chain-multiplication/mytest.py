@@ -37,7 +37,7 @@ def get_standard_cost(tensors):
     return c
 
 
-n = 40
+n = 20
 matrices = []
 matrices_custom = []
 for i in range(n):
@@ -68,7 +68,7 @@ print("Torch CPU cost = ", get_standard_cost(matrices))
 print()
 
 start = time.time()*1000
-d1.sum().backward()
+(d1**2).sum().backward()
 end = time.time()*1000
 print("Torch CPU Backward Pass Duration = ", end-start)
 print("Torch CPU Backward Pass Output 0 \n", matrices[0].grad)
@@ -83,33 +83,33 @@ print("Custom CPU Forward Pass Duration = ", end-start)
 print("Custom CPU Forward Pass Output\n", d2)
 print()
 
-# max_val = d1.max().abs()
+max_val = d1.max().abs()
 
-# d1 = d1/max_val
-# d2 = d2/max_val
+d1 = d1/max_val
+d2 = d2/max_val
 
-# print(torch.abs(d1-d2).max())
+print(torch.abs(d1-d2).max())
 
-# assert torch.allclose(d1, d2, atol=1e-5), "Error in custom matrix impl CPU"
+assert torch.allclose(d1, d2, atol=1e-5), "Error in custom matrix impl CPU"
 
 start = time.time()*1000
-d2.sum().backward()
+(d2**2).sum().backward()
 end = time.time()*1000
 print("Custom CPU Backward Pass Duration = ", end-start)
 print("Custom CPU Backward Pass Output 0 \n", matrices_custom[0].grad)
 print()
 
-# matrices_gpu = [x.to(device='cuda:0') for x in matrices]
+matrices_gpu = [x.to(device='cuda:0') for x in matrices]
 
-# start = time.time()*1000
-# d3 = extension_cpp.dot_chain_gpu(matrices_gpu)
-# end = time.time()*1000
-# print("Custom GPU Forward Pass Duration = ", end-start)
-# print("Custom GPU Forward Pass Output\n", d3)
-# print()
+start = time.time()*1000
+d3 = extension_cpp.dot_chain_gpu(matrices_gpu)
+end = time.time()*1000
+print("Custom GPU Forward Pass Duration = ", end-start)
+print("Custom GPU Forward Pass Output\n", d3)
+print()
 
-# d3 = d3/max_val
+d3 = d3/max_val
 
-# print(torch.abs(d1-d3).max())
+print(torch.abs(d1-d3).max())
 
-# assert torch.allclose(d1, d3, atol=1e-5), "Error in custom matrix impl GPU"
+assert torch.allclose(d1, d3, atol=1e-5), "Error in custom matrix impl GPU"
