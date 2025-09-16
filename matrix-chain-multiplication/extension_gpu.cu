@@ -15,7 +15,7 @@
 
 #define TILE_WIDTH 32
 #define COARSE_FACTOR 8
-#define MODIFIED_TILE_WIDTH COARSE_FACTOR*TILE_WIDTH
+#define MODIFIED_TILE_WIDTH 256
 
 __global__ 
 void cuda_mul(const float *a, const float *b, float *c, const long long n, const long long m, const long long p) {
