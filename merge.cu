@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <chrono>
 
-#define TILE_WIDTH 1024
+#define TILE_WIDTH 2048
 #define BLOCK_WIDTH 1024
 #define COARSE_FACTOR 16
 #define MODIFIED_BLOCK_WIDTH 16384
@@ -84,70 +84,60 @@ long merge(float *a, float *b, float *c, const long s_a, const long s_b, const l
 
 __global__
 void merge_sorted_arrays(float *a, float *b, float *c, const long n, const long m) {
-    __shared__ float a_shared[TILE_WIDTH];
-    __shared__ float b_shared[TILE_WIDTH];
-    __shared__ long block_metadata[4];
+    __shared__ float shared[TILE_WIDTH];
+    __shared__ long a_metadata[2];
+    __shared__ long b_metadata[2];
+    __shared__ long c_metadata[1];
+
+    long c_block_start = BLOCK_WIDTH*blockIdx.x*COARSE_FACTOR;
+    long c_block_end = (BLOCK_WIDTH*(blockIdx.x+1)*COARSE_FACTOR < n+m)?BLOCK_WIDTH*(blockIdx.x+1)*COARSE_FACTOR:n+m;
 
     if (threadIdx.x == 0) {
-        block_metadata[0] = co_rank(a, b, n, m, blockDim.x*blockIdx.x*COARSE_FACTOR);
-        block_metadata[1] = blockDim.x*blockIdx.x*COARSE_FACTOR - block_metadata[0] - 2;
-        block_metadata[2] = co_rank(a, b, n, m, blockDim.x*(blockIdx.x + 1)*COARSE_FACTOR);
-        block_metadata[3] = blockDim.x*(blockIdx.x + 1)*COARSE_FACTOR - block_metadata[2] - 2;
-
-        block_metadata[2] = (block_metadata[2]+1 < n)?block_metadata[2]+1:n;
-        block_metadata[3] = (block_metadata[3]+1 < m)?block_metadata[3]+1:m;
+        a_metadata[1] = co_rank(a, b, n, m, c_block_start);
+        b_metadata[1] = c_block_start-a_metadata[1]-2;
+        c_metadata[0] = c_block_start;
     }
     
     __syncthreads();
 
-    for (long i = threadIdx.x; i < TILE_WIDTH; i += BLOCK_WIDTH) {
-        if (i + block_metadata[0] + 1 < block_metadata[2]) a_shared[i] = a[i + block_metadata[0] + 1];
-        else a_shared[i] = 1.0e300;
-        
-        if (i + block_metadata[1] + 1 < block_metadata[3]) b_shared[i] = b[i + block_metadata[1] + 1];
-        else b_shared[i] = 1.0e300;
-    }
-
-    __syncthreads();
-
-    long idx = blockDim.x*blockIdx.x + threadIdx.x;
-    long a_curr_start = co_rank(a, b, n, m, idx*COARSE_FACTOR);
-    long c_curr = idx*COARSE_FACTOR;
-
-    while (block_metadata[0] < block_metadata[2] || block_metadata[1] < block_metadata[3]) {
-        long c_end = ((idx + 1)*COARSE_FACTOR < (n+m))?(idx + 1)*COARSE_FACTOR:(n+m);
-        
-        if (c_curr < c_end) {
-            c_curr = merge(
-                a_shared, 
-                b_shared, 
-                c, 
-                a_curr_start-block_metadata[0], 
-                idx*COARSE_FACTOR-a_curr_start-1-(block_metadata[1]+1), 
-                c_curr, 
-                TILE_WIDTH, 
-                TILE_WIDTH, 
-                c_end
-            );
-        }
-        
-        __syncthreads();
+    while (c_metadata[0] < c_block_end) {
+        long c_tile_start = c_metadata[0];
+        long c_tile_end = ((c_metadata[0] + TILE_WIDTH) < c_block_end)?(c_metadata[0] + TILE_WIDTH):c_block_end;
 
         if (threadIdx.x == 0) {
-            block_metadata[0] += TILE_WIDTH;
-            block_metadata[1] += TILE_WIDTH;
-        }
-        
-        __syncthreads();
-        
-        for (long i = threadIdx.x; i < TILE_WIDTH; i += BLOCK_WIDTH) {
-            if (i + block_metadata[0] + 1 < block_metadata[2]) a_shared[i] = a[i + block_metadata[0] + 1];
-            else a_shared[i] = 1.0e300;
-            
-            if (i + block_metadata[1] + 1 < block_metadata[3]) b_shared[i] = b[i + block_metadata[1] + 1];
-            else b_shared[i] = 1.0e300;
+            a_metadata[0] = a_metadata[1] + 1;
+            b_metadata[0] = b_metadata[1] + 1;
+
+            a_metadata[1] = co_rank(a, b, n, m, c_tile_end);
+            b_metadata[1] = c_tile_end-a_metadata[1]-2;
         }
 
+        __syncthreads();
+
+        long p = a_metadata[1]-a_metadata[0]+1;
+        long q = b_metadata[1]-b_metadata[0]+1;
+
+        for (long i = threadIdx.x; i < TILE_WIDTH; i += BLOCK_WIDTH) {
+            if (i + a_metadata[0] <= a_metadata[1]) shared[i] = a[i + a_metadata[0]];
+            else if (i + b_metadata[0] - p <= b_metadata[1]) shared[i] = b[i + b_metadata[0] - p];
+            else shared[i] = 1.0e300;
+        }
+    
+        __syncthreads();
+
+        long per_thread = (TILE_WIDTH + BLOCK_WIDTH - 1)/BLOCK_WIDTH;
+
+        long a_start = co_rank(&shared[0], &shared[p], p, q, threadIdx.x*per_thread);
+        long b_start = threadIdx.x*per_thread-a_start-2;
+
+        long c_start = threadIdx.x*per_thread;
+        long c_end = (threadIdx.x+1)*per_thread;
+        c_end = (c_end < TILE_WIDTH)?c_end:TILE_WIDTH;
+
+        merge(&shared[0], &shared[p], &c[c_metadata[0]], a_start+1, b_start+1, c_start, p, q, c_end);
+        __syncthreads();
+
+        if (threadIdx.x == 0) c_metadata[0] += TILE_WIDTH;
         __syncthreads();
     }
 }

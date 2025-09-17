@@ -1,5 +1,5 @@
 def find_kth_smallest(a, b, k):
-    assert len(a) + len(b) >= k, "Invalid k"
+    # assert len(a) + len(b) >= k, "Invalid k"
     left, right = 0, min(k, len(a))-1
     j = -1
     while left <= right:
@@ -40,9 +40,11 @@ def find_median(a, b):
             
             return (x + y)/2.0
 
-a = [1,2]
-b = [3,4,5,6,7,8]
+a = [2, 4, 8, 11, 14, 15, 19]
+b = [1, 3, 6, 13, 20, 22, 25]
+
+# 1 2 3 4 6 8 11 13 14 15 19 20 22 25
 
 # c = [1,1,2,3,4,6,7,8,8,10,11,12,15,17,26]
 
-print(find_median(a, b))
+print(find_kth_smallest(a, b, 20))
