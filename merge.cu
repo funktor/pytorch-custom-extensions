@@ -9,9 +9,9 @@
 #include <algorithm>
 #include <chrono>
 
-#define TILE_WIDTH 2048
+#define TILE_WIDTH 8192
 #define BLOCK_WIDTH 1024
-#define COARSE_FACTOR 16
+#define COARSE_FACTOR 128
 #define MODIFIED_BLOCK_WIDTH 16384
 
 bool are_equal(float *x, float *y, long start, long end) {
@@ -101,7 +101,6 @@ void merge_sorted_arrays(float *a, float *b, float *c, const long n, const long 
     __syncthreads();
 
     while (c_metadata[0] < c_block_end) {
-        long c_tile_start = c_metadata[0];
         long c_tile_end = ((c_metadata[0] + TILE_WIDTH) < c_block_end)?(c_metadata[0] + TILE_WIDTH):c_block_end;
 
         if (threadIdx.x == 0) {
@@ -142,9 +141,22 @@ void merge_sorted_arrays(float *a, float *b, float *c, const long n, const long 
     }
 }
 
+__global__
+void merge_sorted_arrays2(float *a, float *b, float *c, const long n, const long m) {
+    long idx = blockDim.x*blockIdx.x + threadIdx.x;
+    long s_idx = idx*COARSE_FACTOR;
+
+    if (s_idx < n + m) {
+        long a_start = co_rank(a, b, n, m, s_idx);
+        long b_start = s_idx-a_start-2;
+
+        merge(a, b, c, a_start+1, b_start+1, s_idx, n, m, s_idx + COARSE_FACTOR);
+    }
+}
+
 int main(){
-    long n = 1e4;
-    long m = 1e4;
+    long n = 1e6;
+    long m = 1e6;
 
     float *a, *b, *c_host, *c_device;
 
@@ -176,7 +188,7 @@ int main(){
     std::sort(b, b+m);
 
     auto start = std::chrono::high_resolution_clock::now();
-    merge_sorted_arrays<<<(n+m+MODIFIED_BLOCK_WIDTH-1)/MODIFIED_BLOCK_WIDTH, BLOCK_WIDTH>>>(a, b, c_device, n, m);
+    merge_sorted_arrays<<<(n+m+(BLOCK_WIDTH*COARSE_FACTOR)-1)/(BLOCK_WIDTH*COARSE_FACTOR), BLOCK_WIDTH>>>(a, b, c_device, n, m);
     cudaDeviceSynchronize();
     auto stop = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
